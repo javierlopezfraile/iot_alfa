@@ -14,7 +14,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>ESP32 Panel - Dracula Theme</title>
+<title>ESP32 Panel</title>
 <style>
   body {
     background-color: #282a36;
@@ -60,7 +60,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
 
-<h2>🌙 Panel de Control ESP32 (Dracula)</h2>
+<h2>Panel de Control ESP32</h2>
 
 <div class="card">
   <h3>1️⃣ Control de Umbral de Pasos</h3>
@@ -101,7 +101,7 @@ async function obtenerDatos(){
   } else {
     pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>`;
     for (let i = 0; i < 4; i++) {
-        pasosT.innerHTML = tbl[i].innerHTML;
+        pasosT.innerHTML += tbl[i].innerHTML;
     }
   }
 
@@ -113,7 +113,7 @@ async function obtenerDatos(){
   } else {
     tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.hora}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`;
     for (let i = 0; i < 4; i++) {
-        tempT.innerHTML = tbl[i].innerHTML;
+        tempT.innerHTML += tbl[i].innerHTML;
     }
   }
   
