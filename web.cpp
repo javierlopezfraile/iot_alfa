@@ -7,14 +7,18 @@ extern float temperatura;
 
 String generarFecha() {
   // 模拟时间戳
-  return "2025-11-08 12:00:00";
+  return "2025-11-08";
+}
+
+Strign generarHora() {
+  return "18:00:00"
 }
 
 String generarDatosJSON() {
   String json = "{";
   json += "\"umbralPasos\":" + String(umbralPasos) + ",";
-  json += "\"pasos\":{\"fecha\":\"2025-11-08\",\"valor\":" + String(pasos) + "},";
-  json += "\"temp\":{\"fecha\":\"" + generarFecha() + "\",\"valor\":" + String(temperatura, 2) + "}";
+  json += "\"pasos\":{\"fecha\":\"" + generarFecha() + "\",\"valor\":" + String(pasos) + "},";
+  json += "\"temp\":{\"fecha\":\"" + generarFecha() + "\",\"hora\":" + generarHora() + "\"valor\":" + String(temperatura, 2) + "}";
   json += "}";
   return json;
 }
