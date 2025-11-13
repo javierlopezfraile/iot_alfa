@@ -40,5 +40,5 @@ void loop() {
   }
 
   server.handleClient();
-  //delay(1000);
+  delay(1000);
 }

@@ -14,7 +14,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>ESP32 Panel - Dracula Theme</title>
+<title>ESP32 Panel</title>
 <style>
   body {
     background-color: #282a36;
@@ -60,7 +60,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
 
-<h2>🌙 Panel de Control ESP32 (Dracula)</h2>
+<h2>Panel de Control ESP32</h2>
 
 <div class="card">
   <h3>1️⃣ Control de Umbral de Pasos</h3>
@@ -80,7 +80,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <div class="card">
   <h3>3️⃣ Registro de Temperatura</h3>
   <table id="tablaTemp">
-    <thead><tr><th>Fecha-Hora</th><th>Temperatura (°C)</th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Hora</th><th>Temperatura (°C)</th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -94,10 +94,29 @@ async function obtenerDatos(){
 
   // 更新表格
   const pasosT = document.querySelector('#tablaPasos tbody');
-  pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>`;
+  let tbl = pasosT.getElementsByTagName('tr');
+  let num = tbl.length;
+  if (num <= 5) {
+    pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>` + pasosT.innerHTML;
+  } else {
+    pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>`;
+    for (let i = 0; i < 4; i++) {
+        pasosT.innerHTML += tbl[i].innerHTML;
+    }
+  }
 
   const tempT = document.querySelector('#tablaTemp tbody');
-  tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`;
+  tbl = tempT.getElementsByTagName('tr');
+  num = tbl.length;
+  if (num <= 5) {
+    tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.hora}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`+ tempT.innerHTML;
+  } else {
+    tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.hora}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`;
+    for (let i = 0; i < 4; i++) {
+        tempT.innerHTML += tbl[i].innerHTML;
+    }
+  }
+  
 }
 
 function enviarUmbral(){
