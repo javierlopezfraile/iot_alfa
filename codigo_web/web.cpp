@@ -10,8 +10,8 @@ String generarFecha() {
   return "2025-11-08";
 }
 
-Strign generarHora() {
-  return "18:00:00"
+String generarHora() {
+  return "18:00:00";
 }
 
 String generarDatosJSON() {
