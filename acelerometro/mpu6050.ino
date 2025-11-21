@@ -9,13 +9,14 @@ class StepCounter {
     bool stepDetected;
 
     const float accelThreshold;
-    const unsigned long stepDelay;
+    const unsigned long processInterval; 
+    unsigned long lastProcess;           
 
     float getAccelMagnitude() {
       float ax = mpu.getAccX();
       float ay = mpu.getAccY();
       float az = mpu.getAccZ();
-      return sqrt(ax * ax + ay * ay + az * az);
+      return sqrt(ax*ax + ay*ay + az*az);
     }
 
     void printStepData(float ax, float ay, float az, float mag) {
@@ -36,13 +37,13 @@ class StepCounter {
     }
 
   public:
-
-    StepCounter(TwoWire &w = Wire, float threshold = 0.3, unsigned long delayMs = 300)
+    StepCounter(TwoWire &w = Wire, float threshold = 0.25, unsigned long processMs = 500)
       : mpu(w),
         accelThreshold(threshold),
-        stepDelay(delayMs),
+        processInterval(processMs),
         stepCount(0),
         lastStepTime(0),
+        lastProcess(0),
         stepDetected(false)
     {}
 
@@ -54,28 +55,25 @@ class StepCounter {
     }
 
     void actualizar() {
+      unsigned long now = millis();
+      if (now - lastProcess < processInterval) return; // no procesar continuamente
+      lastProcess = now;
 
       mpu.update();
 
       float ax = mpu.getAccX();
       float ay = mpu.getAccY();
       float az = mpu.getAccZ();
-      float mag = sqrt(ax * ax + ay * ay + az * az);
+      float mag = sqrt(ax*ax + ay*ay + az*az);
 
-      unsigned long currentTime = millis();
-
-      if ((mag > (1.0 + accelThreshold)) && (mag < 2.0)) {
-
-        if (!stepDetected && (currentTime - lastStepTime > stepDelay)) {
+      if ((mag > (1.0 + accelThreshold)) && (mag < 1.0 + 2*accelThreshold)) {
           stepCount++;
           stepDetected = true;
-          lastStepTime = currentTime;
+          lastStepTime = now;
           printStepData(ax, ay, az, mag);
-        }
-
       } else {
-        stepDetected = false;
-        printNoStepData(ax, ay, az, mag);
+          stepDetected = false;
+          printNoStepData(ax, ay, az, mag);
       }
     }
 
@@ -84,7 +82,8 @@ class StepCounter {
     }
 };
 
-StepCounter contadorPasos(Wire, 0.3, 300);
+
+StepCounter contadorPasos(Wire, 0.25, 500); 
 
 void setup() {
   Serial.begin(115200);
@@ -93,5 +92,4 @@ void setup() {
 
 void loop() {
   contadorPasos.actualizar();
-  delay(500);
 }
