@@ -1,0 +1,170 @@
+#include <Wire.h>
+#include <Adafruit_MLX90614.h>
+
+#define BUTTON_PIN 17
+#define DOUBLECLICK_WINDOW 10000
+#define COUNTDOWN_TIME 5000
+#define DEBOUNCE_TIME 200
+#define LONG_PRESS_TIME 2000       
+
+#define TEMP_MIN 34.0
+#define TEMP_MAX 41.0
+
+class SensorTemperaturaMLX90614 {
+  private:
+    Adafruit_MLX90614 sensor;
+    int numMediciones;
+
+  public:
+    SensorTemperaturaMLX90614(int n = 10) : numMediciones(n) {}
+
+    void iniciar() {
+      if (!sensor.begin()) {
+        Serial.println("ERROR iniciando MLX90614!");
+      }
+    }
+
+    float leerUna() {
+      return sensor.readObjectTempC();
+    }
+
+    float medirPromedioBruto() {
+      float suma = 0;
+      for (int i = 0; i < numMediciones; i++) {
+        suma += leerUna();
+        delay(200);
+      }
+      return suma / numMediciones;
+    }
+};
+
+SensorTemperaturaMLX90614 sensorTemp(10);
+
+bool esperandoSegundoClick = false;
+unsigned long tiempoPrimerClick = 0;
+
+bool enCuentaAtras = false;
+unsigned long inicioCuentaAtras = 0;
+
+unsigned long ultimoCambioBoton = 0;
+bool botonPrev = HIGH;
+
+bool internetConectado = false;
+bool botonMantiene = false;
+unsigned long tiempoInicioHold = 0;
+
+void cancelarTodo() {
+  esperandoSegundoClick = false;
+  enCuentaAtras = false;
+  Serial.println("Operación cancelada por el usuario.");
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  sensorTemp.iniciar();
+
+  Serial.println("Sistema listo. Pulsa el botón para iniciar.");
+}
+
+void loop() {
+  unsigned long ahora = millis();
+  bool lectura = digitalRead(BUTTON_PIN);
+  bool botonPulsadoAhora = false;
+
+  if (lectura != botonPrev && (ahora - ultimoCambioBoton > DEBOUNCE_TIME)) {
+    ultimoCambioBoton = ahora;
+    botonPrev = lectura;
+
+    if (lectura == LOW) {
+      botonPulsadoAhora = true;
+    }
+  }
+
+  if (lectura == LOW && !botonMantiene) {
+    // Se acaba de empezar a mantener pulsado
+    botonMantiene = true;
+    tiempoInicioHold = ahora;
+  }
+
+  if (lectura == HIGH && botonMantiene) {
+    // Dejó de mantener pulsado
+    botonMantiene = false;
+  }
+
+  if (botonMantiene && (ahora - tiempoInicioHold > LONG_PRESS_TIME)) {
+    botonMantiene = false;  // Evita que se repita
+
+    // Toggle Internet
+    internetConectado = !internetConectado;
+
+    if (internetConectado)
+      Serial.println("Conectado a Internet");
+    else
+      Serial.println("Desconectado de Internet");
+  }
+
+  if (botonPulsadoAhora) {
+
+    // Si estamos en cuenta atrás → CANCELA
+    if (enCuentaAtras) {
+      cancelarTodo();
+      return;
+    }
+
+    if (!esperandoSegundoClick) {
+      Serial.println("Primer click detectado. Tienes 10 segundos para pulsar otra vez.");
+      esperandoSegundoClick = true;
+      tiempoPrimerClick = ahora;
+      return;
+    }
+
+    if (esperandoSegundoClick && (ahora - tiempoPrimerClick <= DOUBLECLICK_WINDOW)) {
+      Serial.println("Segundo click detectado. Preparando medición...");
+      esperandoSegundoClick = false;
+
+      enCuentaAtras = true;
+      inicioCuentaAtras = ahora;
+      return;
+    }
+  }
+
+  if (esperandoSegundoClick && (ahora - tiempoPrimerClick > DOUBLECLICK_WINDOW)) {
+    Serial.println("Tiempo agotado. Operación cancelada.");
+    esperandoSegundoClick = false;
+  }
+
+  if (enCuentaAtras) {
+    unsigned long restante = COUNTDOWN_TIME - (ahora - inicioCuentaAtras);
+
+    if (restante <= 0) {
+      enCuentaAtras = false;
+
+      Serial.println("Midiendo temperatura...");
+
+      float temp = sensorTemp.medirPromedioBruto();
+
+      if (temp < TEMP_MIN || temp > TEMP_MAX) {
+        Serial.print("Temperatura fuera de rango (");
+        Serial.print(temp);
+        Serial.println(" °C). Parece temperatura ambiental.");
+      } else {
+        Serial.print("Temperatura corporal válida: ");
+        Serial.print(temp);
+        Serial.println(" °C");
+      }
+
+    } else {
+      static unsigned long lastPrint = 0;
+      if (ahora - lastPrint >= 1000) {
+        lastPrint = ahora;
+        Serial.print("Medición en ");
+        Serial.print(restante / 1000);
+        Serial.println(" segundos...");
+      }
+    }
+  }
+}
