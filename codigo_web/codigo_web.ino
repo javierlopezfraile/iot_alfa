@@ -39,7 +39,7 @@ void handleDatos() {
 void handleSetUmbral() {
   if (server.hasArg("valor")) {
     umbralPasos = server.arg("valor").toInt();
-    Serial.printf("Nuevo umbral recibido: %d\n", umbralPasos);
+    //Serial.printf("Nuevo umbral recibido: %d\n", umbralPasos);
   }
   server.send(200, "text/plain", "OK");
 }
