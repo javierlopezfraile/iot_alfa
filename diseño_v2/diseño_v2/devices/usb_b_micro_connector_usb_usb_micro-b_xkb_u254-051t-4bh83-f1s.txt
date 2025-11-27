@@ -1,0 +1,19 @@
+PACKAGE 'usb_micro-b_xkb_u254-051t-4bh83-f1s'
+CLASS IC
+PINCOUNT 6
+PINORDER MAIN ,
+	VBUS__1,
+	D-__2,
+	D+__3,
+	ID__4,
+	GND__5,
+	Shield__6
+FUNCTION MAIN MAIN ,
+	1,
+	2,
+	3,
+	4,
+	5,
+	6
+PACKAGEPROP VALUE USB_B_Micro
+END

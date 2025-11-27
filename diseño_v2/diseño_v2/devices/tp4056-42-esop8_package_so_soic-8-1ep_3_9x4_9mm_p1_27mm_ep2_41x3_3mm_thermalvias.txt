@@ -1,0 +1,25 @@
+PACKAGE 'soic-8-1ep_3_9x4_9mm_p1_27mm_ep2_41x3_3mm_thermalvias'
+CLASS IC
+PINCOUNT 9
+PINORDER MAIN ,
+	TEMP__1,
+	PROG__2,
+	GND__3,
+	V_?CC?__4,
+	BAT__5,
+	??STDBY?__6,
+	??CHRG?__7,
+	CE__8,
+	EPAD__9
+FUNCTION MAIN MAIN ,
+	1,
+	2,
+	3,
+	4,
+	5,
+	6,
+	7,
+	8,
+	9
+PACKAGEPROP VALUE 'TP4056-42-ESOP8'
+END

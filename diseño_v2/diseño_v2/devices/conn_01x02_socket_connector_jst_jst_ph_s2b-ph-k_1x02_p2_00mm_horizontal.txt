@@ -1,0 +1,11 @@
+PACKAGE 'jst_ph_s2b-ph-k_1x02_p2_00mm_horizontal'
+CLASS IC
+PINCOUNT 2
+PINORDER MAIN ,
+	Pin_1__1,
+	Pin_2__2
+FUNCTION MAIN MAIN ,
+	1,
+	2
+PACKAGEPROP VALUE Conn_01x02_Socket
+END
