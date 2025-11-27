@@ -5,8 +5,45 @@ int umbralPasos = 100;
 int pasos = 0;
 float temperatura = 24.5;
 
-const char* ssid = "Wokwi-GUEST";
-const char* password = "";
+const char* ssid = "RedmiLeo";
+const char* password = "12345678";
+
+String generarFecha() {
+  // 模拟时间戳
+  return "2025-11-08";
+}
+
+String generarHora() {
+  return "18:00:00";
+}
+
+String generarDatosJSON() {
+  String json = "{";
+  json += "\"umbralPasos\":" + String(umbralPasos) + ",";
+  json += "\"pasos\":{\"fecha\":\"" + generarFecha() + "\",\"valor\":" + String(pasos) + "},";
+  json += "\"temp\":{\"fecha\":\"" + generarFecha() + "\",\"hora\":\"" + generarHora() + "\",\"valor\":" + String(temperatura, 2) + "}";
+  json += "}";
+  return json;
+}
+
+void handleRoot() {
+  extern const char index_html[] PROGMEM;
+  server.send_P(200, "text/html", index_html);
+}
+
+void handleDatos() {
+  server.send(200, "application/json", generarDatosJSON());
+  Serial.println(generarDatosJSON());
+}
+
+void handleSetUmbral() {
+  if (server.hasArg("valor")) {
+    umbralPasos = server.arg("valor").toInt();
+    Serial.printf("Nuevo umbral recibido: %d\n", umbralPasos);
+  }
+  server.send(200, "text/plain", "OK");
+}
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -36,9 +73,9 @@ void loop() {
     lastUpdate = millis();
     pasos += random(5, 15);
     temperatura += (random(-5, 5)) / 10.0;
-    handleDatos();
+    //handleDatos();
   }
 
   server.handleClient();
-  delay(1000);
+  delay(5000);
 }

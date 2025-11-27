@@ -94,26 +94,26 @@ async function obtenerDatos(){
 
   // 更新表格
   const pasosT = document.querySelector('#tablaPasos tbody');
-  let tbl = pasosT.getElementsByTagName('tr');
-  let num = tbl.length;
-  if (num <= 5) {
+  let tblPasos = Array.from(pasosT.getElementsByTagName('tr'));
+  let numPasos = tblPasos.length;
+  if (numPasos < 5) {
     pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>` + pasosT.innerHTML;
   } else {
     pasosT.innerHTML = `<tr><td>${data.pasos.fecha}</td><td>${data.pasos.valor}</td></tr>`;
     for (let i = 0; i < 4; i++) {
-        pasosT.innerHTML += tbl[i].innerHTML;
+        pasosT.innerHTML += tblPasos[i].innerHTML;
     }
   }
 
   const tempT = document.querySelector('#tablaTemp tbody');
-  tbl = tempT.getElementsByTagName('tr');
-  num = tbl.length;
-  if (num <= 5) {
+  let tblTemp = Array.from(tempT.getElementsByTagName('tr'));
+  let numTemp = tblTemp.length;
+  if (numTemp < 5) {
     tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.hora}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`+ tempT.innerHTML;
   } else {
     tempT.innerHTML = `<tr><td>${data.temp.fecha}</td><td>${data.temp.hora}</td><td>${data.temp.valor.toFixed(2)}</td></tr>`;
     for (let i = 0; i < 4; i++) {
-        tempT.innerHTML += tbl[i].innerHTML;
+        tempT.innerHTML += tblTemp[i].innerHTML;
     }
   }
   
