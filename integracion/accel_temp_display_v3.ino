@@ -475,6 +475,10 @@ void loop() {
     }
   }
 
+  if (internetConectado) {
+    server.handleClient();
+  }
+
   if (botonPulsadoAhora) {
 
     if (enCuentaAtras) {
