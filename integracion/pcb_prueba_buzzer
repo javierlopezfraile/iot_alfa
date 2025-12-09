@@ -1,0 +1,39 @@
+// Pines
+const int pBuzzer = 27;   // Pad 12
+const int pButton = 26;   // Pad 11
+
+bool buzzerOn = false;    
+bool lastButtonState = HIGH;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(pBuzzer, OUTPUT);
+  pinMode(pButton, INPUT_PULLUP);  
+
+  Serial.println("PRUEBA");
+}
+
+void loop() {
+
+  bool buttonState = digitalRead(pButton);
+
+  if (buttonState == LOW && lastButtonState == HIGH) {
+    delay(200); 
+    if (digitalRead(pButton) == LOW) { 
+
+      buzzerOn = !buzzerOn;   
+
+      if (buzzerOn) {
+        tone(pBuzzer, 300);   
+        Serial.println("BUZZER ON");
+      } else {
+        noTone(pBuzzer);      
+        Serial.println("BUZZER OFF");
+      }
+    }
+  }
+
+  lastButtonState = buttonState;
+}
+
