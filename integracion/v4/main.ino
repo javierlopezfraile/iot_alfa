@@ -61,7 +61,7 @@ const int daylightOffset_sec = 0;
 ESP32Time rtc;
 
 // Variables para fecha y hora
-char fechaActual[11] = "01/01/2025"; // DD/MM/AAAA
+char fechaActual[11] = "01/01/1970"; // DD/MM/AAAA
 char horaActual[9] = "00:00:00";     // HH:MM:SS
 
 bool pantallaTrabajando = false;
@@ -75,6 +75,8 @@ bool pantallaAutomaticaActiva = false;
 unsigned long inicioPantallaAutomatica = 0;
 
 bool umbralSuperado = false;
+
+char ipAddress[16] = "";
 
 struct RegistroPasos {
     char fecha[11]; // "DD/MM/AAAA"
@@ -286,6 +288,60 @@ class PantallaOLED {
         pantalla.display();
     }
 
+    void displayConectandoWiFi() {
+      encender();
+      pantalla.clearDisplay();
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 20);
+      pantalla.println("  CONECTANDO WIFI...");
+      
+      pantalla.display();
+    }
+
+    void displayWiFiConectado(const char* ip) {
+      encender();
+      pantalla.clearDisplay();
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 20);
+      pantalla.println("  WIFI CONECTADO");
+      pantalla.println();
+      pantalla.print("  IP: ");
+      pantalla.println(ip);
+      
+      pantalla.display();
+    }
+
+    void displayWiFiDesconectado() {
+      encender();
+      pantalla.clearDisplay();
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 20);
+      pantalla.println(" WIFI DESCONECTADO");
+      pantalla.println();
+      
+      pantalla.display();
+    }
+
+    void displayErrorWiFi() {
+      encender();
+      pantalla.clearDisplay();
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 0);
+      pantalla.println("   ERROR WIFI");
+      pantalla.println();
+      pantalla.print(" SSID: ");
+      pantalla.println(ssid);
+      pantalla.println();
+      pantalla.print(" PASS: ");
+      pantalla.println(password);
+      
+      pantalla.display();
+    }
+
     void displayEnhorabuena() {
       encender();
       pantalla.setCursor(0, 0);
@@ -370,10 +426,10 @@ RegistroPasos historialPasos[MAX_HISTORIAL];
 RegistroTemperatura historialTemp[MAX_HISTORIAL];
 
 void guardarPasos(const char* fecha, int &pasosActuales) {
-    if (totalDiasPasos == 1 && strcmp(historialPasos[0].fecha, "01/01/2000") == 0 && strcmp(historialPasos[0].fecha, fecha) != 0) {
+    if (totalDiasPasos == 1 && strcmp(historialPasos[0].fecha, "01/01/1970") == 0 && strcmp(historialPasos[0].fecha, fecha) != 0) {
         pasosActuales += historialPasos[0].pasos;
 
-        // Reemplazar la fecha 01/01/2000 por la nueva fecha
+        // Reemplazar la fecha 01/01/1970 por la nueva fecha
         strncpy(historialPasos[0].fecha, fecha, 10);
         historialPasos[0].fecha[10] = '\0';
         historialPasos[0].pasos = pasosActuales;
@@ -411,7 +467,7 @@ void guardarPasos(const char* fecha, int &pasosActuales) {
 
 
 void guardarTemperatura(const char* fecha, const char* hora, float temp) {
-    if (strcmp(fecha, "01/01/2000") == 0) {
+    if (strcmp(fecha, "01/01/1970") == 0) {
         return;
     }
 
@@ -536,7 +592,7 @@ void handleSetUmbral() {
 }
 
 void inicializarFechaHora() {
-    strcpy(fechaActual, "01/01/2000");
+    strcpy(fechaActual, "01/01/1970");
     strcpy(horaActual, "00:00:00");
 }
 
@@ -551,6 +607,7 @@ void actualizarFechaHoraDesdeRTC() {
 
 bool conectarWiFi() {
   Serial.print("Conectando a WiFi...");
+  miPantalla.displayConectandoWiFi();
   WiFi.begin(ssid, password);
 
   int intentos = 0;
@@ -564,6 +621,8 @@ bool conectarWiFi() {
     Serial.println("\nConectado a WiFi!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
+    snprintf(ipAddress, sizeof(ipAddress), "%s", WiFi.localIP().toString().c_str());
+    miPantalla.displayWiFiConectado(ipAddress);
     
     configurarTiempo();
     
@@ -575,6 +634,7 @@ bool conectarWiFi() {
   }
   
   Serial.println("\nError conectando");
+  miPantalla.displayErrorWiFi();
   return false;
 }
 
@@ -582,6 +642,7 @@ void desconectarWiFi() {
   server.stop();
   WiFi.disconnect(true);
   Serial.println("WiFi desconectado");
+  miPantalla.displayWiFiDesconectado();
 }
 
 void setup() {
@@ -672,6 +733,9 @@ void loop() {
       desconectarWiFi();
       internetConectado = false;
     }
+
+    pantallaAutomaticaActiva = true;
+    inicioPantallaAutomatica = ahora;
   }
 
   if (internetConectado) {
@@ -692,7 +756,7 @@ void loop() {
 
       actualizarFechaHoraDesdeRTC();
       miPantalla.setDatos(pasos, umbralPasos, fechaActual, horaActual, internetConectado, 38);
-      if (strcmp(fechaActual, "01/01/2000") == 0) {
+      if (strcmp(fechaActual, "01/01/1970") == 0) {
         miPantalla.displayBienvenida();  
       } else {
         miPantalla.displayPredeterminado();
