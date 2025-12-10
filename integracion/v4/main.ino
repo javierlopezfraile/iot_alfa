@@ -25,6 +25,57 @@ WebServer server(80);
 
 #define MAX_HISTORIAL 5
 
+int totalDiasPasos = 0;
+int totalMedidasTemp = 0;
+
+String ultimoJSON = "";
+
+bool rtcSincronizado = false;
+
+bool esperandoSegundoClick = false;
+unsigned long tiempoPrimerClick = 0;
+
+bool enCuentaAtras = false;
+unsigned long inicioCuentaAtras = 0;
+
+bool enCuentaAtrasTemperatura = false;
+unsigned long inicioCuentaAtrasTemperatura = 0;
+
+unsigned long ultimoCambioBoton = 0;
+bool botonPrev = HIGH;
+
+bool internetConectado = false;
+bool botonMantiene = false;
+unsigned long tiempoInicioHold = 0;
+
+// Configuración WiFi
+const char* ssid = "ALFA"; // ACZ_22
+const char* password = "12345678"; // asd123as
+
+// Configuración NTP
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 3600;
+const int daylightOffset_sec = 0;
+
+// Objeto RTC
+ESP32Time rtc;
+
+// Variables para fecha y hora
+char fechaActual[11] = "01/01/2025"; // DD/MM/AAAA
+char horaActual[9] = "00:00:00";     // HH:MM:SS
+
+bool pantallaTrabajando = false;
+bool sensorTemperaturaTrabajando = false;
+bool sensorAcelerometroTrabajando = true;
+float temp = 0.0;
+int pasos = 0;
+int umbralPasos = 10000;
+
+bool pantallaAutomaticaActiva = false;
+unsigned long inicioPantallaAutomatica = 0;
+
+bool umbralSuperado = false;
+
 struct RegistroPasos {
     char fecha[11]; // "DD/MM/AAAA"
     int pasos;
@@ -220,7 +271,7 @@ class PantallaOLED {
       pantalla.println("META DE PASOS LOGRADA");
       pantalla.println();
       pantalla.print("    ");
-      pantalla.print(pasos); pantalla.println(" PASOS");
+      pantalla.print(umbralPasos); pantalla.println(" PASOS");
       pantalla.println();
       pantalla.println("---------------------");
       pantalla.println(" OBJETIVO ALCANZADO!");
@@ -291,55 +342,8 @@ class PantallaOLED {
 SensorTemperaturaMLX90614 sensorTemp(10); 
 StepCounter contadorPasos(Wire, 0.25, 500); 
 PantallaOLED miPantalla;
-
 RegistroPasos historialPasos[MAX_HISTORIAL];
-int totalDiasPasos = 0;
-
 RegistroTemperatura historialTemp[MAX_HISTORIAL];
-int totalMedidasTemp = 0;
-
-String ultimoJSON = "";
-
-bool rtcSincronizado = false;
-
-bool esperandoSegundoClick = false;
-unsigned long tiempoPrimerClick = 0;
-
-bool enCuentaAtras = false;
-unsigned long inicioCuentaAtras = 0;
-
-bool enCuentaAtrasTemperatura = false;
-unsigned long inicioCuentaAtrasTemperatura = 0;
-
-unsigned long ultimoCambioBoton = 0;
-bool botonPrev = HIGH;
-
-bool internetConectado = false;
-bool botonMantiene = false;
-unsigned long tiempoInicioHold = 0;
-
-// Configuración WiFi
-const char* ssid = "ALFA"; // ACZ_22
-const char* password = "12345678"; // asd123as
-
-// Configuración NTP
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 3600;
-const int daylightOffset_sec = 0;
-
-// Objeto RTC
-ESP32Time rtc;
-
-// Variables para fecha y hora
-char fechaActual[11] = "01/01/2025"; // DD/MM/AAAA
-char horaActual[9] = "00:00:00";     // HH:MM:SS
-
-bool pantallaTrabajando = false;
-bool sensorTemperaturaTrabajando = false;
-bool sensorAcelerometroTrabajando = true;
-float temp = 0.0;
-int pasos = 0;
-int umbralPasos = 10000;
 
 void guardarPasos(const char* fecha, int &pasosActuales) {
     if (totalDiasPasos == 1 && strcmp(historialPasos[0].fecha, "01/01/2000") == 0 && strcmp(historialPasos[0].fecha, fecha) != 0) {
@@ -460,6 +464,7 @@ void cancelarTodo() {
   pantallaTrabajando = false;
   sensorTemperaturaTrabajando = false;
   sensorAcelerometroTrabajando = true;
+  pantallaAutomaticaActiva = false;
   miPantalla.apagar();
 }
 
@@ -500,6 +505,7 @@ void handleDatos() {
 void handleSetUmbral() {
   if (server.hasArg("valor")) {
     umbralPasos = server.arg("valor").toInt();
+    umbralSuperado = false;
     //Serial.printf("Nuevo umbral recibido: %d\n", umbralPasos);
   }
   server.send(200, "text/plain", "OK");
@@ -588,11 +594,15 @@ void loop() {
 
     guardarPasos(fechaActual, pasos);
 
-    if (pasos >= umbralPasos) {
+    if (pasos == umbralPasos && !umbralSuperado) {
       miPantalla.displayEnhorabuena();
+      umbralSuperado = true;
       pantallaTrabajando = true;
       sensorTemperaturaTrabajando = false;
       sensorAcelerometroTrabajando = false;
+
+      pantallaAutomaticaActiva = true;
+      inicioPantallaAutomatica = ahora;
     }
   }
 
@@ -647,9 +657,6 @@ void loop() {
   if (botonPulsadoAhora) {
 
     if (enCuentaAtras) {
-      pantallaTrabajando = false;
-      sensorTemperaturaTrabajando = false;
-      sensorAcelerometroTrabajando = true;
       cancelarTodo();
       return;
     }
@@ -752,6 +759,15 @@ void loop() {
       sensorAcelerometroTrabajando = true;   
 
     }
+  }
+
+  if (pantallaAutomaticaActiva && (ahora - inicioPantallaAutomatica > DOUBLECLICK_WINDOW)) {
+    pantallaAutomaticaActiva = false;
+    pantallaTrabajando = false;
+    sensorTemperaturaTrabajando = false;
+    sensorAcelerometroTrabajando = true;
+    miPantalla.apagar();
+    Serial.println("Pantalla automática (que aparece sin presionar botón) cerrada tras 10 segundos");
   }
 
 }
