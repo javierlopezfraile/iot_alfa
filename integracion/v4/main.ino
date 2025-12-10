@@ -10,7 +10,7 @@
 
 WebServer server(80);
 
-#define BUTTON_PIN 17
+#define BUTTON_PIN 26
 #define DOUBLECLICK_WINDOW 10000
 #define COUNTDOWN_TIME 5000
 #define DEBOUNCE_TIME 200
@@ -182,21 +182,33 @@ class PantallaOLED {
       pantalla.clearDisplay();
       pantalla.display();
       pantalla.ssd1306_command(SSD1306_DISPLAYON);  // Enciende el OLED
+      pantalla.setTextSize(1);
     }
 
     void displayPredeterminado() {
-      encender();
-      pantalla.setCursor(0, 0);
+        encender();
+        pantalla.clearDisplay();
 
-      pantalla.print("PASOS: "); pantalla.print(pasos); pantalla.print("/"); pantalla.println(meta);
-      pantalla.println();
-      pantalla.print("FECHA: "); pantalla.println(buffer_fecha);
-      pantalla.print("HORA: "); pantalla.println(buffer_hora);
-      pantalla.println();
-      pantalla.println("---------------------");
-      pantalla.print("WIFI:  "); pantalla.println(wifi ? "ON" : "OFF");
 
-      pantalla.display();
+        pantalla.setTextSize(1);
+        pantalla.setCursor(0, 0);
+        pantalla.println(buffer_fecha);
+
+        pantalla.setTextSize(2);
+        pantalla.setCursor(0, 16);
+        pantalla.println(buffer_hora);
+
+        pantalla.setCursor(0, 34);
+        pantalla.print(pasos);
+        pantalla.print("/");
+        pantalla.println(meta);
+
+        pantalla.setTextSize(1);
+        pantalla.setCursor(0, 56);
+        pantalla.print("WIFI: ");
+        pantalla.println(wifi ? "ON" : "OFF");
+
+        pantalla.display();
     }
 
     void displayEnhorabuena() {
@@ -212,21 +224,6 @@ class PantallaOLED {
       pantalla.println();
       pantalla.println("---------------------");
       pantalla.println(" OBJETIVO ALCANZADO!");
-
-      pantalla.display();
-    }
-
-    void displayTomandoMedida() {
-      encender();
-      pantalla.setCursor(0, 0);
-
-      pantalla.println("MIDIENDO TEMPERATURA");
-      pantalla.println();
-      pantalla.println("   MANTENTE QUIETO");
-      pantalla.println();
-      pantalla.println("---------------------");
-      pantalla.println();
-      pantalla.print("ESPERA 5 SEGUNDOS...");
 
       pantalla.display();
     }
@@ -248,14 +245,16 @@ class PantallaOLED {
   
     void displayEmpezarMedida(int tiempoEmpezarMedida) {
       encender();
-      pantalla.setCursor(0, 0);
 
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 0);
       pantalla.println("¡RELOJ EN LA FRENTE!");
       pantalla.println();
-      pantalla.println("MEDIDA COMIENZA EN"); pantalla.print(tiempoEmpezarMedida); pantalla.println(" s");
-      pantalla.println();
-      pantalla.println("---------------------");
-      pantalla.println();
+      pantalla.println(" MEDIDA COMIENZA EN");
+
+      pantalla.setTextSize(3);     
+      pantalla.setCursor(48, 30);  
+      pantalla.println(tiempoEmpezarMedida);
 
       pantalla.display();
     }
@@ -320,7 +319,7 @@ bool botonMantiene = false;
 unsigned long tiempoInicioHold = 0;
 
 // Configuración WiFi
-const char* ssid = "iPhone de Javier"; // ACZ_22
+const char* ssid = "ALFA"; // ACZ_22
 const char* password = "12345678"; // asd123as
 
 // Configuración NTP
