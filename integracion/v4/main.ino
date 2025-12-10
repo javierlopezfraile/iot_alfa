@@ -236,6 +236,30 @@ class PantallaOLED {
       pantalla.setTextSize(1);
     }
 
+    void displayBienvenida() {
+      encender();
+      pantalla.clearDisplay();
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 0);
+      pantalla.println("    BIENVENIDO");
+      pantalla.println();
+
+      pantalla.setTextSize(2);     
+      pantalla.setCursor(0, 32);
+      pantalla.print("PASOS: ");
+      pantalla.println(pasos);
+
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 48);
+      pantalla.println("---------------------");
+
+      pantalla.setCursor(0, 56);         
+      pantalla.println("Leer instrucciones");
+
+      pantalla.display();
+    }
+
     void displayPredeterminado() {
         encender();
         pantalla.clearDisplay();
@@ -656,7 +680,7 @@ void loop() {
 
   if (botonPulsadoAhora) {
 
-    if (enCuentaAtras) {
+    if (enCuentaAtras || pantallaAutomaticaActiva) {
       cancelarTodo();
       return;
     }
@@ -668,7 +692,11 @@ void loop() {
 
       actualizarFechaHoraDesdeRTC();
       miPantalla.setDatos(pasos, umbralPasos, fechaActual, horaActual, internetConectado, 38);
-      miPantalla.displayPredeterminado();
+      if (strcmp(fechaActual, "01/01/2000") == 0) {
+        miPantalla.displayBienvenida();  
+      } else {
+        miPantalla.displayPredeterminado();
+      }
       Serial.println("Primer click detectado. Tienes 10 segundos para pulsar otra vez.");
       esperandoSegundoClick = true;
       tiempoPrimerClick = ahora;
