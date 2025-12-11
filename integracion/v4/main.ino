@@ -76,6 +76,8 @@ unsigned long inicioPantallaAutomatica = 0;
 
 bool umbralSuperado = false;
 
+unsigned long ultimaActualizacionPantalla = 0;
+
 char ipAddress[16] = "";
 
 struct RegistroPasos {
@@ -779,6 +781,17 @@ void loop() {
       inicioCuentaAtras = ahora;
       return;
     }
+  }
+
+   if (esperandoSegundoClick && pantallaTrabajando) {
+      if (ahora - ultimaActualizacionPantalla >= 1000) {
+        ultimaActualizacionPantalla = ahora;
+        actualizarFechaHoraDesdeRTC();
+        miPantalla.setDatos(pasos, umbralPasos, fechaActual, horaActual, internetConectado, 38);
+        if (strcmp(fechaActual, "01/01/1970") != 0) {
+          miPantalla.displayPredeterminado(); 
+        } 
+      }
   }
 
   if (esperandoSegundoClick && (ahora - tiempoPrimerClick > DOUBLECLICK_WINDOW) && pantallaTrabajando) {
