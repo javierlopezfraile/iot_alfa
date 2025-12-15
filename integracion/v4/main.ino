@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <ESP32Time.h>
 #include <WebServer.h>
+#include <SPIFFS.h>
 
 WebServer server(80);
 
@@ -16,8 +17,8 @@ WebServer server(80);
 #define DEBOUNCE_TIME 200
 #define LONG_PRESS_TIME 2000       
 
-#define TEMP_MIN 34.0
-#define TEMP_MAX 41.0
+#define TEMP_MIN 10.0
+#define TEMP_MAX 55.0
 
 #define ANCHO 128
 #define ALTO 64
@@ -70,6 +71,10 @@ bool sensorAcelerometroTrabajando = true;
 float temp = 0.0;
 int pasos = 0;
 int umbralPasos = 10000;
+
+// Gestión memoria
+unsigned long ultimoGuardado = 0;
+const unsigned long INTERVALO_GUARDADO = 300000;
 
 bool pantallaAutomaticaActiva = false;
 unsigned long inicioPantallaAutomatica = 0;
@@ -647,13 +652,58 @@ void desconectarWiFi() {
   miPantalla.displayWiFiDesconectado();
 }
 
+void guardarJSONenSPIFFS() {
+  String jsonActual = generarDatosJSON();
+  
+  File file = SPIFFS.open("/datos.json", FILE_WRITE);
+  if (file) {
+    file.print(jsonActual);
+    file.close();
+    Serial.println("JSON guardado en SPIFFS correctamente");
+  } else {
+    Serial.println("Error al guardar JSON en SPIFFS");
+  }
+}
+
+void cargarJSONdesdeSPIFFS() { 
+  if (!SPIFFS.exists("/datos.json")) {
+    Serial.println("No existe archivo previo en SPIFFS");
+    return;
+  }
+  else {
+    Serial.println("El archivo SPIFFS existe");
+  }
+  
+  File file = SPIFFS.open("/datos.json", FILE_READ);
+  if (!file) {
+    Serial.println("Error al abrir JSON desde SPIFFS");
+    return;
+  }
+  
+  String jsonCargado = file.readString();
+  file.close();
+  
+  if (jsonCargado.length() > 0) {
+    ultimoJSON = jsonCargado;
+    Serial.println("JSON cargado desde SPIFFS:");
+    Serial.println(jsonCargado);
+  } else {
+    Serial.println("Archivo JSON vacío en SPIFFS");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  // sensorTemp.iniciar(); //sin temperatura
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Error al montar SPIFFS");
+  }
+
+  cargarJSONdesdeSPIFFS();
+  sensorTemp.iniciar(); //sin temperatura
   contadorPasos.iniciar();
   miPantalla.iniciar();
 
@@ -669,11 +719,15 @@ void setup() {
   Serial.println("Sistema listo. Pulsa el botón para iniciar.");
 }
 
-
 void loop() {
   unsigned long ahora = millis();
   bool lectura = digitalRead(BUTTON_PIN);
   bool botonPulsadoAhora = false;
+
+  if (ahora - ultimoGuardado >= INTERVALO_GUARDADO) {
+    ultimoGuardado = ahora;
+    guardarJSONenSPIFFS();
+  }
 
   if (!pantallaTrabajando && !sensorTemperaturaTrabajando) { // controlar!
     contadorPasos.actualizar(); 
@@ -813,8 +867,8 @@ void loop() {
       miPantalla.apagar();
       Serial.println("Midiendo temperatura...");
 
-      // temp = sensorTemp.medirPromedioBruto(); //sin temperatura
-      temp = 35;
+      temp = sensorTemp.medirPromedioBruto(); //sin temperatura
+      // temp = 35;
 
       guardarTemperatura(fechaActual, horaActual, temp);
 
