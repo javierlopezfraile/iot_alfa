@@ -8,6 +8,7 @@
 #include <ESP32Time.h>
 #include <WebServer.h>
 #include <SPIFFS.h>
+#include <ArduinoJson.h> 
 
 WebServer server(80);
 
@@ -24,7 +25,7 @@ WebServer server(80);
 #define ALTO 64
 #define OLED_RESET -1
 
-#define MAX_HISTORIAL 5
+#define MAX_HISTORIAL 10
 
 int totalDiasPasos = 0;
 int totalMedidasTemp = 0;
@@ -74,7 +75,7 @@ int umbralPasos = 10000;
 
 // Gestión memoria
 unsigned long ultimoGuardado = 0;
-const unsigned long INTERVALO_GUARDADO = 300000;
+const unsigned long INTERVALO_GUARDADO = 60000; // 300000
 
 bool pantallaAutomaticaActiva = false;
 unsigned long inicioPantallaAutomatica = 0;
@@ -204,6 +205,10 @@ class StepCounter {
 
     unsigned long getStepCount() {
       return stepCount;
+    }
+
+    void setStepCount(int count) {  
+      stepCount = count;
     }
 };
 
@@ -427,7 +432,7 @@ class PantallaOLED {
 };
 
 SensorTemperaturaMLX90614 sensorTemp(10); 
-StepCounter contadorPasos(Wire, 0.25, 500); 
+StepCounter contadorPasos(Wire, 0.4, 500); 
 PantallaOLED miPantalla;
 RegistroPasos historialPasos[MAX_HISTORIAL];
 RegistroTemperatura historialTemp[MAX_HISTORIAL];
@@ -632,7 +637,15 @@ bool conectarWiFi() {
     miPantalla.displayWiFiConectado(ipAddress);
     
     configurarTiempo();
-    
+    cargarJSONdesdeSPIFFS();
+
+    if (totalDiasPasos > 0 && strcmp(historialPasos[totalDiasPasos - 1].fecha, fechaActual) == 0) {
+      int pasosGuardados = historialPasos[totalDiasPasos - 1].pasos;
+      pasos += pasosGuardados; 
+      contadorPasos.setStepCount(pasos);
+      historialPasos[totalDiasPasos - 1].pasos = pasos;
+    }
+
     server.on("/", handleRoot);
     server.on("/datos", handleDatos);
     server.on("/setUmbral", handleSetUmbral);
@@ -670,9 +683,6 @@ void cargarJSONdesdeSPIFFS() {
     Serial.println("No existe archivo previo en SPIFFS");
     return;
   }
-  else {
-    Serial.println("El archivo SPIFFS existe");
-  }
   
   File file = SPIFFS.open("/datos.json", FILE_READ);
   if (!file) {
@@ -680,16 +690,53 @@ void cargarJSONdesdeSPIFFS() {
     return;
   }
   
-  String jsonCargado = file.readString();
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, file);
   file.close();
   
-  if (jsonCargado.length() > 0) {
-    ultimoJSON = jsonCargado;
-    Serial.println("JSON cargado desde SPIFFS:");
-    Serial.println(jsonCargado);
-  } else {
-    Serial.println("Archivo JSON vacío en SPIFFS");
+  if (error) {
+    Serial.print("Error parseando JSON");
+    Serial.println(error.c_str());
+    return;
   }
+  
+  Serial.println("JSON cargado y parseado desde SPIFFS");
+  
+  if (doc.containsKey("umbralPasos")) {
+    umbralPasos = doc["umbralPasos"];
+  }
+  
+  totalDiasPasos = 0;
+  JsonArray pasosArray = doc["pasos"];
+  for (JsonObject item : pasosArray) {
+    if (totalDiasPasos >= MAX_HISTORIAL) break;
+    if (item.containsKey("fecha") && item.containsKey("valor")) {
+      strncpy(historialPasos[totalDiasPasos].fecha, item["fecha"], 10);
+      historialPasos[totalDiasPasos].fecha[10] = '\0';
+      historialPasos[totalDiasPasos].pasos = item["valor"];
+      totalDiasPasos++;
+    }
+  }
+
+  totalMedidasTemp = 0;
+  JsonArray tempArray = doc["temp"];
+  for (JsonObject item : tempArray) {
+    if (totalMedidasTemp >= MAX_HISTORIAL) break;
+    if (item["tomada"] == true) {
+      strncpy(historialTemp[totalMedidasTemp].fecha, item["fecha"], 10);
+      historialTemp[totalMedidasTemp].fecha[10] = '\0';
+      strncpy(historialTemp[totalMedidasTemp].hora, item["hora"], 8);
+      historialTemp[totalMedidasTemp].hora[8] = '\0';
+      historialTemp[totalMedidasTemp].temperatura = item["valor"];
+      totalMedidasTemp++;
+    }
+  }
+  
+  Serial.print("Cargados: ");
+  Serial.print(totalDiasPasos);
+  Serial.print(" días, ");
+  Serial.print(totalMedidasTemp);
+  Serial.println(" temperaturas");
 }
 
 void setup() {
@@ -702,7 +749,6 @@ void setup() {
     Serial.println("Error al montar SPIFFS");
   }
 
-  cargarJSONdesdeSPIFFS();
   sensorTemp.iniciar(); //sin temperatura
   contadorPasos.iniciar();
   miPantalla.iniciar();
