@@ -13,6 +13,8 @@
 WebServer server(80);
 
 #define BUTTON_PIN 26
+#define MPU_INT_PIN 25 
+#define BUZZER_PIN 27
 #define DOUBLECLICK_WINDOW 10000
 #define COUNTDOWN_TIME 5000
 #define DEBOUNCE_TIME 200
@@ -208,6 +210,80 @@ class StepCounter {
           stepDetected = false;
           // printNoStepData(ax, ay, az, mag);
       }
+    }
+
+  void modoCycle() {
+      // 1. Configurar acelerómetro en rango ±2g
+      Wire.beginTransmission(0x68);
+      Wire.write(0x1C); // ACCEL_CONFIG
+      Wire.write(0x00); // ±2g
+      Wire.endTransmission();
+      
+      // 2. Configurar Motion Detection Threshold (cuanto mayor = menos sensible)
+      Wire.beginTransmission(0x68);
+      Wire.write(0x1F); // MOT_THR
+      Wire.write(0x28); // Threshold = 40 (prueba con este valor, ajusta si necesario)
+      Wire.endTransmission();
+      
+      // 3. Configurar Motion Detection Duration (tiempo que debe durar el movimiento)
+      Wire.beginTransmission(0x68);
+      Wire.write(0x20); // MOT_DUR
+      Wire.write(0x28); // Duración = 40ms
+      Wire.endTransmission();
+      
+      // 4. Habilitar Motion Detection interrupt
+      Wire.beginTransmission(0x68);
+      Wire.write(0x38); // INT_ENABLE
+      Wire.write(0x40); // MOT_EN bit (habilitar motion interrupt)
+      Wire.endTransmission();
+      
+      // 5. Configurar INT pin (active LOW, latch enabled)
+      Wire.beginTransmission(0x68);
+      Wire.write(0x37); // INT_PIN_CFG
+      Wire.write(0x90); // Active LOW + Latch enabled
+      Wire.endTransmission();
+      
+      // 6. Limpiar interrupciones pendientes antes de dormir
+      Wire.beginTransmission(0x68);
+      Wire.write(0x3A); // INT_STATUS
+      Wire.endTransmission();
+      Wire.requestFrom(0x68, 1);
+      if (Wire.available()) Wire.read(); // Leer para limpiar
+      
+      // 7. Configurar frecuencia de wake en Cycle Mode
+      Wire.beginTransmission(0x68);
+      Wire.write(0x6C); // PWR_MGMT_2
+      Wire.write(0x07); // Wake frequency 1.25Hz
+      Wire.endTransmission();
+      
+      // 8. Activar Cycle Mode
+      Wire.beginTransmission(0x68);
+      Wire.write(0x6B); // PWR_MGMT_1
+      Wire.write(0x28); // Cycle mode + disable temp sensor
+      Wire.endTransmission();
+      
+      delay(100); 
+      
+      Serial.println("MPU6050 en modo cycle con motion detection");
+    }
+
+    void modoNormal() {
+      Wire.beginTransmission(0x68);
+      Wire.write(0x6B); // PWR_MGMT_1
+      Wire.write(0x00); // Salir de sleep
+      Wire.endTransmission();
+      
+      delay(100); 
+      
+      Serial.println("MPU6050 en modo normal");
+    }
+
+    void apagar() {
+      Wire.beginTransmission(0x68);
+      Wire.write(0x6B); // PWR_MGMT_1
+      Wire.write(0x40); // Sleep mode
+      Wire.endTransmission();
+      Serial.println("MPU6050 apagado");
     }
 
     unsigned long getStepCount() {
@@ -409,7 +485,7 @@ class PantallaOLED {
       pantalla.display();
     }
 
-    void displayMedidaCorrecta(float temperatura) { // está el estado eliminado
+    void displayMedidaCorrecta(float temperatura, const char* estado) { 
       encender();
       pantalla.setCursor(0, 0);
 
@@ -420,7 +496,7 @@ class PantallaOLED {
       pantalla.println("---------------------");
       pantalla.println();
       pantalla.print("   ESTADO: ");
-
+      pantalla.println(estado);
       pantalla.display();
     }
 
@@ -460,6 +536,26 @@ class PantallaOLED {
       
       pantalla.display();
     }
+
+    void displayBienvenidoSetup() {
+    encender();
+    
+    pantalla.setTextSize(1);
+    pantalla.setCursor(10, 24);
+    pantalla.println("BIENVENIDO");
+    
+    pantalla.display();
+  }
+
+  void displayRecuperado() {
+    encender();
+    
+    pantalla.setTextSize(1);
+    pantalla.setCursor(10, 24);
+    pantalla.println("RECUPERADO");
+    
+    pantalla.display();
+  }
 };
 
 SensorTemperaturaMLX90614 sensorTemp(10); 
@@ -469,14 +565,7 @@ RegistroPasos historialPasos[MAX_HISTORIAL];
 RegistroTemperatura historialTemp[MAX_HISTORIAL];
 
 void guardarPasos(const char* fecha, int &pasosActuales) {
-    if (totalDiasPasos == 1 && strcmp(historialPasos[0].fecha, "01/01/1970") == 0 && strcmp(historialPasos[0].fecha, fecha) != 0) {
-        pasosActuales += historialPasos[0].pasos;
-
-        // Reemplazar la fecha 01/01/1970 por la nueva fecha
-        strncpy(historialPasos[0].fecha, fecha, 10);
-        historialPasos[0].fecha[10] = '\0';
-        historialPasos[0].pasos = pasosActuales;
-
+    if (strcmp(fecha, "01/01/1970") == 0) {
         return;
     }
 
@@ -489,25 +578,25 @@ void guardarPasos(const char* fecha, int &pasosActuales) {
         return;
     }
 
-    if (strcmp(historialPasos[totalDiasPasos - 1].fecha, fecha) != 0) {
-        pasosActuales = 0; 
-        if (totalDiasPasos >= MAX_HISTORIAL) {
-            for (int i = 1; i < MAX_HISTORIAL; i++) {
-                historialPasos[i - 1] = historialPasos[i];
-            }
-            totalDiasPasos = MAX_HISTORIAL - 1;
-        }
-
-        strncpy(historialPasos[totalDiasPasos].fecha, fecha, 10);
-        historialPasos[totalDiasPasos].fecha[10] = '\0';
-        historialPasos[totalDiasPasos].pasos = pasosActuales;
-        totalDiasPasos++;
-    } else {
+    if (strcmp(historialPasos[totalDiasPasos - 1].fecha, fecha) == 0) {
         historialPasos[totalDiasPasos - 1].pasos = pasosActuales;
+        return;
     }
+
+    pasosActuales = 0;
+    
+    if (totalDiasPasos >= MAX_HISTORIAL) {
+        for (int i = 1; i < MAX_HISTORIAL; i++) {
+            historialPasos[i - 1] = historialPasos[i];
+        }
+        totalDiasPasos = MAX_HISTORIAL - 1;
+    }
+
+    strncpy(historialPasos[totalDiasPasos].fecha, fecha, 10);
+    historialPasos[totalDiasPasos].fecha[10] = '\0';
+    historialPasos[totalDiasPasos].pasos = pasosActuales;
+    totalDiasPasos++;
 }
-
-
 
 void guardarTemperatura(const char* fecha, const char* hora, float temp) {
     if (strcmp(fecha, "01/01/1970") == 0) {
@@ -666,9 +755,22 @@ bool conectarWiFi() {
     Serial.println(WiFi.localIP());
     snprintf(ipAddress, sizeof(ipAddress), "%s", WiFi.localIP().toString().c_str());
     miPantalla.displayWiFiConectado(ipAddress);
+
+    sonidoBueno();
     
     configurarTiempo();
+    
+    int pasosPreSincronizacion = pasos;
+    
     cargarJSONdesdeSPIFFS();
+
+    if (pasosPreSincronizacion > 0) {
+        Serial.print("Sumando pasos acumulados sin sincronizar: ");
+        Serial.println(pasosPreSincronizacion);
+        pasos = pasosPreSincronizacion;
+        guardarPasos(fechaActual, pasos);
+        contadorPasos.setStepCount(pasos);
+    }
 
     if (totalDiasPasos > 0 && strcmp(historialPasos[totalDiasPasos - 1].fecha, fechaActual) == 0) {
       int pasosGuardados = historialPasos[totalDiasPasos - 1].pasos;
@@ -770,15 +872,45 @@ void cargarJSONdesdeSPIFFS() {
   Serial.println(" temperaturas");
 }
 
+void sonidoBueno() {
+  tone(BUZZER_PIN, 1000, 200);  // Tono agudo corto (éxito)
+  delay(200);
+  tone(BUZZER_PIN, 1200, 200);
+  delay(200);
+  noTone(BUZZER_PIN);
+}
+
+void sonidoMalo() {
+  tone(BUZZER_PIN, 200, 500);   // Tono grave largo (fiebre)
+  delay(500);
+  noTone(BUZZER_PIN);
+}
+
+void sonidoError() {
+  tone(BUZZER_PIN, 400, 150);   // Dos tonos graves rápidos (error)
+  delay(200);
+  tone(BUZZER_PIN, 400, 150);
+  delay(200);
+  noTone(BUZZER_PIN);
+}
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(MPU_INT_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
 
   if (!SPIFFS.begin(true)) {
     Serial.println("Error al montar SPIFFS");
   }
+
+  //if (SPIFFS.remove("/datos.json")) {
+    //Serial.println("Archivo datos.json eliminado correctamente");
+  //} else {
+    //Serial.println("No se pudo eliminar datos.json (o no existe)");
+  //}
 
   cargarJSONdesdeSPIFFS();
 
@@ -789,6 +921,8 @@ void setup() {
   // Inicializar fecha y hora una vez al inicio
   inicializarFechaHora();
 
+  miPantalla.displayBienvenidoSetup();
+  delay(3000);
   miPantalla.apagar();
 
   ultimaActividad = millis(); 
@@ -824,6 +958,7 @@ void loop() {
 
     if (pasos == umbralPasos && !umbralSuperado) {
       miPantalla.displayEnhorabuena();
+      sonidoBueno(); 
       umbralSuperado = true;
       pantallaTrabajando = true;
       sensorTemperaturaTrabajando = false;
@@ -909,6 +1044,7 @@ void loop() {
       
       miPantalla.displayDeepSleep();
       delay(2000);
+      sonidoBueno();
       
       guardarJSONenSPIFFS();
       Serial.println("Deep sleep (5 clicks)");
@@ -918,6 +1054,8 @@ void loop() {
       if (internetConectado) {
         desconectarWiFi();
       }
+
+      contadorPasos.apagar();
       
       esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
       esp_deep_sleep_start();
@@ -1008,8 +1146,14 @@ void loop() {
         Serial.print("Temperatura fuera de rango (");
         Serial.print(temp);
         Serial.println(" °C). Parece temperatura ambiental.");
-      } else {
-        miPantalla.displayMedidaCorrecta(temp);
+      } 
+      else if (temp >= 38) {
+        miPantalla.displayMedidaCorrecta(temp, "FIEBRE");
+        sonidoMalo();  
+      }
+      else {
+        miPantalla.displayMedidaCorrecta(temp, "OK");
+        sonidoBueno();
 
         Serial.print("Temperatura corporal válida: ");
         Serial.print(temp);
@@ -1057,6 +1201,7 @@ void loop() {
     
     miPantalla.displayLightSleep();
     delay(2000);
+    sonidoBueno();
     
     Serial.println("Light sleep por inactividad");
     Serial.flush();
@@ -1066,11 +1211,20 @@ void loop() {
       internetConectado = false;
     }
     miPantalla.apagar();
+
+    contadorPasos.modoCycle();
     
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
+    esp_sleep_enable_ext1_wakeup(BIT(25), ESP_EXT1_WAKEUP_ALL_LOW);
+
     esp_light_sleep_start();
     
     Serial.println("Despertado de light sleep");
+    miPantalla.displayRecuperado();
+    delay(3000);
+    miPantalla.apagar();
+    contadorPasos.modoNormal();
+
     ultimaActividad = millis();
   }
 
