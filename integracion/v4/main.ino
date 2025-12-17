@@ -16,7 +16,8 @@ WebServer server(80);
 #define DOUBLECLICK_WINDOW 10000
 #define COUNTDOWN_TIME 5000
 #define DEBOUNCE_TIME 200
-#define LONG_PRESS_TIME 2000       
+#define LONG_PRESS_TIME 2000
+#define CLICK_WINDOW 10000       
 
 #define TEMP_MIN 10.0
 #define TEMP_MAX 55.0
@@ -85,6 +86,12 @@ bool umbralSuperado = false;
 unsigned long ultimaActualizacionPantalla = 0;
 
 char ipAddress[16] = "";
+
+// Gestión bajo consumo
+int contadorClicks = 0;
+unsigned long tiempoInicioContador = 0;
+unsigned long ultimaActividad = 0; 
+const unsigned long TIEMPO_INACTIVIDAD = 60000;
 
 struct RegistroPasos {
     char fecha[11]; // "DD/MM/AAAA"
@@ -429,6 +436,30 @@ class PantallaOLED {
       strncpy(buffer_hora, hora, sizeof(buffer_hora) - 1);
       buffer_hora[sizeof(buffer_hora) - 1] = '\0';
     }
+
+    void displayLightSleep() {
+      encender();
+      pantalla.clearDisplay();
+      
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 20);
+      pantalla.println("  ENTRANDO EN");
+      pantalla.println("   LIGHT SLEEP...");
+      
+      pantalla.display();
+    }
+
+    void displayDeepSleep() {
+      encender();
+      pantalla.clearDisplay();
+      
+      pantalla.setTextSize(1);
+      pantalla.setCursor(0, 20);
+      pantalla.println("  ENTRANDO EN");
+      pantalla.println("   DEEP SLEEP...");
+      
+      pantalla.display();
+    }
 };
 
 SensorTemperaturaMLX90614 sensorTemp(10); 
@@ -749,6 +780,8 @@ void setup() {
     Serial.println("Error al montar SPIFFS");
   }
 
+  cargarJSONdesdeSPIFFS();
+
   sensorTemp.iniciar(); //sin temperatura
   contadorPasos.iniciar();
   miPantalla.iniciar();
@@ -757,6 +790,8 @@ void setup() {
   inicializarFechaHora();
 
   miPantalla.apagar();
+
+  ultimaActividad = millis(); 
 
   for (int i = 0; i < 50; i++) {
     Serial.println();
@@ -777,7 +812,13 @@ void loop() {
 
   if (!pantallaTrabajando && !sensorTemperaturaTrabajando) { // controlar!
     contadorPasos.actualizar(); 
+    int pasosAnteriores = pasos;
     pasos = contadorPasos.getStepCount(); 
+
+    if (pasos != pasosAnteriores) {  
+        ultimaActividad = ahora;
+        Serial.println("hay actividad");
+    }
 
     guardarPasos(fechaActual, pasos);
 
@@ -799,6 +840,8 @@ void loop() {
 
     if (lectura == LOW) {
       botonPulsadoAhora = true;
+      ultimaActividad = ahora;
+      Serial.println("hay actividad");
     }
   }
 
@@ -845,6 +888,40 @@ void loop() {
   }
 
   if (botonPulsadoAhora) {
+
+    if (contadorClicks == 0) {
+      tiempoInicioContador = ahora;
+    }
+    
+    if (ahora - tiempoInicioContador <= CLICK_WINDOW) {
+      contadorClicks++;
+      Serial.print("Clicks: ");
+      Serial.println(contadorClicks);
+    } else {
+      contadorClicks = 1;
+      tiempoInicioContador = ahora;
+    }
+
+    // 5 CLICKS = DEEP SLEEP
+    if (contadorClicks >= 5) {
+      contadorClicks = 0;
+      cancelarTodo();
+      
+      miPantalla.displayDeepSleep();
+      delay(2000);
+      
+      guardarJSONenSPIFFS();
+      Serial.println("Deep sleep (5 clicks)");
+      Serial.flush();
+      
+      miPantalla.apagar();
+      if (internetConectado) {
+        desconectarWiFi();
+      }
+      
+      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
+      esp_deep_sleep_start();
+    }
 
     if (enCuentaAtras || pantallaAutomaticaActiva) {
       cancelarTodo();
@@ -973,6 +1050,28 @@ void loop() {
     sensorAcelerometroTrabajando = true;
     miPantalla.apagar();
     Serial.println("Pantalla automática (que aparece sin presionar botón) cerrada tras 10 segundos");
+  }
+
+  if (ahora - ultimaActividad > TIEMPO_INACTIVIDAD) {
+    cancelarTodo();
+    
+    miPantalla.displayLightSleep();
+    delay(2000);
+    
+    Serial.println("Light sleep por inactividad");
+    Serial.flush();
+    
+    if (internetConectado) {
+      desconectarWiFi();
+      internetConectado = false;
+    }
+    miPantalla.apagar();
+    
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
+    esp_light_sleep_start();
+    
+    Serial.println("Despertado de light sleep");
+    ultimaActividad = millis();
   }
 
 }
