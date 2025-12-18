@@ -201,7 +201,7 @@ class StepCounter {
       float az = mpu.getAccZ();
       float mag = sqrt(ax*ax + ay*ay + az*az);
 
-      if ((mag > (1.0 + accelThreshold)) && (mag < 1.0 + 2*accelThreshold)) {
+      if (mag > (1.0 + accelThreshold)) {
           stepCount++;
           stepDetected = true;
           lastStepTime = now;
@@ -213,53 +213,53 @@ class StepCounter {
     }
 
   void modoCycle() {
-      // 1. Configurar acelerómetro en rango ±2g
+
       Wire.beginTransmission(0x68);
       Wire.write(0x1C); // ACCEL_CONFIG
-      Wire.write(0x00); // ±2g
+      Wire.write(0x00); // 2g
       Wire.endTransmission();
       
-      // 2. Configurar Motion Detection Threshold (cuanto mayor = menos sensible)
+     // Configurar Motion Detection Threshold (cuanto mayor = menos sensible)
       Wire.beginTransmission(0x68);
       Wire.write(0x1F); // MOT_THR
-      Wire.write(0x28); // Threshold = 40 (prueba con este valor, ajusta si necesario)
+      Wire.write(0x50); // Threshold 
       Wire.endTransmission();
       
-      // 3. Configurar Motion Detection Duration (tiempo que debe durar el movimiento)
+      // Configurar Motion Detection Duration (tiempo que debe durar el movimiento)
       Wire.beginTransmission(0x68);
       Wire.write(0x20); // MOT_DUR
       Wire.write(0x28); // Duración = 40ms
       Wire.endTransmission();
       
-      // 4. Habilitar Motion Detection interrupt
+      // Habilitar Motion Detection interrupt
       Wire.beginTransmission(0x68);
       Wire.write(0x38); // INT_ENABLE
-      Wire.write(0x40); // MOT_EN bit (habilitar motion interrupt)
+      Wire.write(0x40); 
       Wire.endTransmission();
       
-      // 5. Configurar INT pin (active LOW, latch enabled)
+      // Configurar INT pin 
       Wire.beginTransmission(0x68);
-      Wire.write(0x37); // INT_PIN_CFG
-      Wire.write(0x90); // Active LOW + Latch enabled
+      Wire.write(0x37); 
+      Wire.write(0x90); 
       Wire.endTransmission();
       
-      // 6. Limpiar interrupciones pendientes antes de dormir
+      // Limpiar interrupciones pendientes antes de dormir
       Wire.beginTransmission(0x68);
       Wire.write(0x3A); // INT_STATUS
       Wire.endTransmission();
       Wire.requestFrom(0x68, 1);
-      if (Wire.available()) Wire.read(); // Leer para limpiar
+      if (Wire.available()) Wire.read(); 
       
-      // 7. Configurar frecuencia de wake en Cycle Mode
+      // Configurar frecuencia de wake en Cycle Mode
       Wire.beginTransmission(0x68);
       Wire.write(0x6C); // PWR_MGMT_2
       Wire.write(0x07); // Wake frequency 1.25Hz
       Wire.endTransmission();
       
-      // 8. Activar Cycle Mode
+      // Activar Cycle Mode
       Wire.beginTransmission(0x68);
       Wire.write(0x6B); // PWR_MGMT_1
-      Wire.write(0x28); // Cycle mode + disable temp sensor
+      Wire.write(0x28); // Cycle mode (1.25 Hz)
       Wire.endTransmission();
       
       delay(100); 
@@ -273,7 +273,7 @@ class StepCounter {
       Wire.write(0x00); // Salir de sleep
       Wire.endTransmission();
       
-      delay(100); 
+      delay(1000); 
       
       Serial.println("MPU6050 en modo normal");
     }
