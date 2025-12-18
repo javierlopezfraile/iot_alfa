@@ -566,6 +566,20 @@ RegistroTemperatura historialTemp[MAX_HISTORIAL];
 
 void guardarPasos(const char* fecha, int &pasosActuales) {
     if (strcmp(fecha, "01/01/1970") == 0) {
+        if (totalDiasPasos == 0 || strcmp(historialPasos[totalDiasPasos - 1].fecha, "01/01/1970") != 0) {
+            if (totalDiasPasos >= MAX_HISTORIAL) {
+                for (int i = 1; i < MAX_HISTORIAL; i++) {
+                    historialPasos[i - 1] = historialPasos[i];
+                }
+                totalDiasPasos = MAX_HISTORIAL - 1;
+            }
+            strncpy(historialPasos[totalDiasPasos].fecha, fecha, 10);
+            historialPasos[totalDiasPasos].fecha[10] = '\0';
+            historialPasos[totalDiasPasos].pasos = pasosActuales;
+            totalDiasPasos++;
+        } else {
+            historialPasos[totalDiasPasos - 1].pasos = pasosActuales;
+        }
         return;
     }
 
@@ -760,38 +774,70 @@ bool conectarWiFi() {
     
     configurarTiempo();
     
-    int pasosPreSincronizacion = pasos;
-    
-    cargarJSONdesdeSPIFFS();
-
-  /////
-  if (pasosPreSincronizacion > 0) {
-      Serial.print("Pasos dados sin WiFi: ");
-      Serial.println(pasosPreSincronizacion);
-      
-      int indiceFechaActual = -1;
-      for (int i = 0; i < totalDiasPasos; i++) {
-          if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
-              indiceFechaActual = i;
-              break;
-          }
-      }
-      
-      if (indiceFechaActual >= 0) {
-          pasos = historialPasos[indiceFechaActual].pasos + pasosPreSincronizacion;
-          historialPasos[indiceFechaActual].pasos = pasos;
-          Serial.print("Sumados a pasos existentes. Total: ");
-          Serial.println(pasos);
-      } else {
-          pasos = pasosPreSincronizacion;
-          guardarPasos(fechaActual, pasos);
-          Serial.print("Nueva entrada creada para hoy: ");
-          Serial.println(pasos);
-      }
-      
-      contadorPasos.setStepCount(pasos);
+  rtcSincronizado = true;
+  
+  // Buscar pasos acumulados sin fecha válida (01/01/1970)
+  int pasosNoSincronizados = 0;
+  int indiceFechaTemporal = -1;
+  
+  for (int i = 0; i < totalDiasPasos; i++) {
+    if (strcmp(historialPasos[i].fecha, "01/01/1970") == 0) {
+      pasosNoSincronizados = historialPasos[i].pasos;
+      indiceFechaTemporal = i;
+      Serial.print("Pasos sin fecha encontrados: ");
+      Serial.println(pasosNoSincronizados);
+      break;
+    }
   }
-  ////
+  
+  // Si hay pasos sin sincronizar, sumarlos a la fecha actual
+  if (pasosNoSincronizados > 0 && indiceFechaTemporal >= 0) {
+    // Buscar si ya existe entrada para fecha actual
+    int indiceFechaActual = -1;
+    for (int i = 0; i < totalDiasPasos; i++) {
+      if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
+        indiceFechaActual = i;
+        break;
+      }
+    }
+    
+    if (indiceFechaActual >= 0) {
+      // Ya existe la fecha actual, sumar los pasos
+      historialPasos[indiceFechaActual].pasos += pasosNoSincronizados;
+      pasos = historialPasos[indiceFechaActual].pasos;
+      Serial.print("Pasos sumados a fecha actual. Total: ");
+      Serial.println(pasos);
+    } else {
+      pasos = pasosNoSincronizados;
+      guardarPasos(fechaActual, pasos);
+      Serial.print("Nueva entrada creada para hoy: ");
+      Serial.println(pasos);
+    }
+    
+    for (int i = indiceFechaTemporal; i < totalDiasPasos - 1; i++) {
+      historialPasos[i] = historialPasos[i + 1];
+    }
+    totalDiasPasos--;
+    
+    contadorPasos.setStepCount(pasos);
+    
+    guardarJSONenSPIFFS();
+    Serial.println("Sincronización completada y guardada en SPIFFS");
+  }
+
+  else {
+    cargarJSONdesdeSPIFFS();
+    
+    for (int i = 0; i < totalDiasPasos; i++) {
+      if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
+        pasos = historialPasos[i].pasos;
+        contadorPasos.setStepCount(pasos);
+        Serial.print("Pasos del día cargados: ");
+        Serial.println(pasos);
+        break;
+      }
+    }
+  }
 
     server.on("/", handleRoot);
     server.on("/datos", handleDatos);
@@ -1157,6 +1203,7 @@ void loop() {
 
       if (temp < TEMP_MIN || temp > TEMP_MAX) {
         miPantalla.displayErrorMedida();
+        sonidoError();
 
         Serial.print("Temperatura fuera de rango (");
         Serial.print(temp);
@@ -1235,6 +1282,7 @@ void loop() {
     esp_light_sleep_start();
     
     Serial.println("Despertado de light sleep");
+    sonidoBueno();
     miPantalla.displayRecuperado();
     delay(3000);
     miPantalla.apagar();
