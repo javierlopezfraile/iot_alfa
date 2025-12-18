@@ -764,20 +764,34 @@ bool conectarWiFi() {
     
     cargarJSONdesdeSPIFFS();
 
-    if (pasosPreSincronizacion > 0) {
-        Serial.print("Sumando pasos acumulados sin sincronizar: ");
-        Serial.println(pasosPreSincronizacion);
-        pasos = pasosPreSincronizacion;
-        guardarPasos(fechaActual, pasos);
-        contadorPasos.setStepCount(pasos);
-    }
-
-    if (totalDiasPasos > 0 && strcmp(historialPasos[totalDiasPasos - 1].fecha, fechaActual) == 0) {
-      int pasosGuardados = historialPasos[totalDiasPasos - 1].pasos;
-      pasos += pasosGuardados; 
+  /////
+  if (pasosPreSincronizacion > 0) {
+      Serial.print("Pasos dados sin WiFi: ");
+      Serial.println(pasosPreSincronizacion);
+      
+      int indiceFechaActual = -1;
+      for (int i = 0; i < totalDiasPasos; i++) {
+          if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
+              indiceFechaActual = i;
+              break;
+          }
+      }
+      
+      if (indiceFechaActual >= 0) {
+          pasos = historialPasos[indiceFechaActual].pasos + pasosPreSincronizacion;
+          historialPasos[indiceFechaActual].pasos = pasos;
+          Serial.print("Sumados a pasos existentes. Total: ");
+          Serial.println(pasos);
+      } else {
+          pasos = pasosPreSincronizacion;
+          guardarPasos(fechaActual, pasos);
+          Serial.print("Nueva entrada creada para hoy: ");
+          Serial.println(pasos);
+      }
+      
       contadorPasos.setStepCount(pasos);
-      historialPasos[totalDiasPasos - 1].pasos = pasos;
-    }
+  }
+  ////
 
     server.on("/", handleRoot);
     server.on("/datos", handleDatos);
@@ -921,6 +935,7 @@ void setup() {
   // Inicializar fecha y hora una vez al inicio
   inicializarFechaHora();
 
+  sonidoBueno();
   miPantalla.displayBienvenidoSetup();
   delay(3000);
   miPantalla.apagar();
