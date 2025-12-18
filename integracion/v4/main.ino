@@ -1037,8 +1037,8 @@ void loop() {
       tiempoInicioContador = ahora;
     }
 
-    // 5 CLICKS = DEEP SLEEP
-    if (contadorClicks >= 5) {
+    // 10 CLICKS = DEEP SLEEP
+    if (contadorClicks >= 10) {
       contadorClicks = 0;
       cancelarTodo();
       
@@ -1047,7 +1047,7 @@ void loop() {
       sonidoBueno();
       
       guardarJSONenSPIFFS();
-      Serial.println("Deep sleep (5 clicks)");
+      Serial.println("Deep sleep (10 clicks)");
       Serial.flush();
       
       miPantalla.apagar();
