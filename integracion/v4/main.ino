@@ -21,8 +21,8 @@ WebServer server(80);
 #define LONG_PRESS_TIME 2000
 #define CLICK_WINDOW 10000       
 
-#define TEMP_MIN 10.0
-#define TEMP_MAX 55.0
+#define TEMP_MIN 33.0
+#define TEMP_MAX 43.0
 
 #define ANCHO 128
 #define ALTO 64
