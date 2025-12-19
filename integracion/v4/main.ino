@@ -66,8 +66,9 @@ const int daylightOffset_sec = 0;
 ESP32Time rtc;
 
 // Variables para fecha y hora
-char fechaActual[11] = "01/01/1970"; // DD/MM/AAAA
-char horaActual[9] = "00:00:00";     // HH:MM:SS
+char fechaActual[11] = ""; // DD/MM/AAAA
+char horaActual[9] = "";     // HH:MM:SS
+char fechaAnterior[11] = "";
 
 bool pantallaTrabajando = false;
 bool sensorTemperaturaTrabajando = false;
@@ -94,6 +95,8 @@ int contadorClicks = 0;
 unsigned long tiempoInicioContador = 0;
 unsigned long ultimaActividad = 0; 
 const unsigned long TIEMPO_INACTIVIDAD = 60000;
+
+bool seConectoWiFiAlgunaVez = false;
 
 struct RegistroPasos {
     char fecha[11]; // "DD/MM/AAAA"
@@ -123,7 +126,9 @@ class SensorTemperaturaMLX90614 {
     }
 
     float leerUna() {
-      return sensor.readObjectTempC();
+      float obj = sensor.readObjectTempC();
+      float amb = sensor.readAmbientTempC();
+      return obj + 2 + 0.1*(amb - 25);
     }
 
     float medirPromedioBruto() {
@@ -185,7 +190,11 @@ class StepCounter {
     void iniciar() {
       Wire.begin();
       mpu.begin();
-      mpu.calcOffsets();
+      mpu.setAccOffsets(
+        0,
+        0,
+        0.02
+      );
       Serial.println("MPU6050 ready!");
     }
 
@@ -208,7 +217,7 @@ class StepCounter {
           printStepData(ax, ay, az, mag);
       } else {
           stepDetected = false;
-          // printNoStepData(ax, ay, az, mag);
+          //printNoStepData(ax, ay, az, mag);
       }
     }
 
@@ -222,13 +231,13 @@ class StepCounter {
      // Configurar Motion Detection Threshold (cuanto mayor = menos sensible)
       Wire.beginTransmission(0x68);
       Wire.write(0x1F); // MOT_THR
-      Wire.write(0x50); // Threshold 
+      Wire.write(0x10); // Threshold 
       Wire.endTransmission();
       
       // Configurar Motion Detection Duration (tiempo que debe durar el movimiento)
       Wire.beginTransmission(0x68);
       Wire.write(0x20); // MOT_DUR
-      Wire.write(0x28); // Duración = 40ms
+      Wire.write(0x10); // Duración = 16ms
       Wire.endTransmission();
       
       // Habilitar Motion Detection interrupt
@@ -460,7 +469,7 @@ class PantallaOLED {
 
       pantalla.println(" ERROR DE MEDICION!");
       pantalla.println();
-      pantalla.println("MEDIDA INCORRECTA DETECTADA");
+      pantalla.println("MEDIDA INCORRECTA");
       pantalla.println();
       pantalla.println("---------------------");
       pantalla.println();
@@ -487,16 +496,17 @@ class PantallaOLED {
 
     void displayMedidaCorrecta(float temperatura, const char* estado) { 
       encender();
-      pantalla.setCursor(0, 0);
-
-      pantalla.print("TEMPERATURA: "); pantalla.print(temperatura, 1); pantalla.println(" C");
-      pantalla.println();
-      pantalla.print("   UMBRAL: "); pantalla.print(umbral, 1); pantalla.println(" C");
-      pantalla.println();
-      pantalla.println("---------------------");
-      pantalla.println();
-      pantalla.print("   ESTADO: ");
+      pantalla.clearDisplay();
+      
+      pantalla.setTextSize(3);
+      pantalla.setCursor(10, 10);
+      pantalla.print(temperatura, 1);
+      pantalla.println(" C");
+      
+      pantalla.setTextSize(1);
+      pantalla.setCursor(20, 45);
       pantalla.println(estado);
+      
       pantalla.display();
     }
 
@@ -513,18 +523,6 @@ class PantallaOLED {
       buffer_hora[sizeof(buffer_hora) - 1] = '\0';
     }
 
-    void displayLightSleep() {
-      encender();
-      pantalla.clearDisplay();
-      
-      pantalla.setTextSize(1);
-      pantalla.setCursor(0, 20);
-      pantalla.println("  ENTRANDO EN");
-      pantalla.println("   LIGHT SLEEP...");
-      
-      pantalla.display();
-    }
-
     void displayDeepSleep() {
       encender();
       pantalla.clearDisplay();
@@ -532,7 +530,7 @@ class PantallaOLED {
       pantalla.setTextSize(1);
       pantalla.setCursor(0, 20);
       pantalla.println("  ENTRANDO EN");
-      pantalla.println("   DEEP SLEEP...");
+      pantalla.println("   MODO BAJO CONSUMO");
       
       pantalla.display();
     }
@@ -559,46 +557,23 @@ class PantallaOLED {
 };
 
 SensorTemperaturaMLX90614 sensorTemp(10); 
-StepCounter contadorPasos(Wire, 0.4, 500); 
+StepCounter contadorPasos(Wire, 0.25, 500); 
 PantallaOLED miPantalla;
 RegistroPasos historialPasos[MAX_HISTORIAL];
 RegistroTemperatura historialTemp[MAX_HISTORIAL];
 
 void guardarPasos(const char* fecha, int &pasosActuales) {
-    if (strcmp(fecha, "01/01/1970") == 0) {
-        if (totalDiasPasos == 0 || strcmp(historialPasos[totalDiasPasos - 1].fecha, "01/01/1970") != 0) {
-            if (totalDiasPasos >= MAX_HISTORIAL) {
-                for (int i = 1; i < MAX_HISTORIAL; i++) {
-                    historialPasos[i - 1] = historialPasos[i];
-                }
-                totalDiasPasos = MAX_HISTORIAL - 1;
-            }
-            strncpy(historialPasos[totalDiasPasos].fecha, fecha, 10);
-            historialPasos[totalDiasPasos].fecha[10] = '\0';
-            historialPasos[totalDiasPasos].pasos = pasosActuales;
-            totalDiasPasos++;
-        } else {
-            historialPasos[totalDiasPasos - 1].pasos = pasosActuales;
+    if (!rtcSincronizado) {
+        return;
+    }
+
+    for (int i = 0; i < totalDiasPasos; i++) {
+        if (strcmp(historialPasos[i].fecha, fecha) == 0) {
+            historialPasos[i].pasos = pasosActuales;  // ← Actualizar
+            return;
         }
-        return;
     }
 
-    if (totalDiasPasos == 0) {
-        pasosActuales = 0;
-        strncpy(historialPasos[0].fecha, fecha, 10);
-        historialPasos[0].fecha[10] = '\0';
-        historialPasos[0].pasos = pasosActuales;
-        totalDiasPasos = 1;
-        return;
-    }
-
-    if (strcmp(historialPasos[totalDiasPasos - 1].fecha, fecha) == 0) {
-        historialPasos[totalDiasPasos - 1].pasos = pasosActuales;
-        return;
-    }
-
-    pasosActuales = 0;
-    
     if (totalDiasPasos >= MAX_HISTORIAL) {
         for (int i = 1; i < MAX_HISTORIAL; i++) {
             historialPasos[i - 1] = historialPasos[i];
@@ -610,10 +585,11 @@ void guardarPasos(const char* fecha, int &pasosActuales) {
     historialPasos[totalDiasPasos].fecha[10] = '\0';
     historialPasos[totalDiasPasos].pasos = pasosActuales;
     totalDiasPasos++;
+
 }
 
 void guardarTemperatura(const char* fecha, const char* hora, float temp) {
-    if (strcmp(fecha, "01/01/1970") == 0) {
+    if (!rtcSincronizado) {
         return;
     }
 
@@ -630,6 +606,8 @@ void guardarTemperatura(const char* fecha, const char* hora, float temp) {
     historialTemp[totalMedidasTemp].hora[8] = '\0';
     historialTemp[totalMedidasTemp].temperatura = temp;
     totalMedidasTemp++;
+
+    guardarJSONenSPIFFS();
 }
 
 String generarDatosJSON() {
@@ -700,6 +678,7 @@ void configurarTiempo() {
  
   struct tm timeinfo;
   if (getLocalTime(&timeinfo)) {
+    rtc.offset = gmtOffset_sec;
     rtc.setTimeStruct(timeinfo);
     
     // Almacenar en las variables globales
@@ -713,6 +692,8 @@ void configurarTiempo() {
     Serial.println(fechaActual);
     Serial.print("Hora almacenada: ");
     Serial.println(horaActual);
+
+    rtcSincronizado = true;
   } else {
     Serial.println("Error al obtener el tiempo");
   }
@@ -737,18 +718,34 @@ void handleSetUmbral() {
   server.send(200, "text/plain", "OK");
 }
 
-void inicializarFechaHora() {
-    strcpy(fechaActual, "01/01/1970");
-    strcpy(horaActual, "00:00:00");
-}
-
 void actualizarFechaHoraDesdeRTC() {
-  if (!rtcSincronizado) return; 
+  int year = rtc.getYear();
+  
+  if (year < 2020) {
+    rtcSincronizado = false;
+    fechaActual[0] = '\0';  
+    horaActual[0] = '\0';
+    return;
+  }
+  
+  rtc.offset = gmtOffset_sec;
+  rtcSincronizado = true;  
+
+  int dia = rtc.getDay();
+  int hora = rtc.getHour(true);
+  if (seConectoWiFiAlgunaVez) {
+    hora -= 1;  
+    if (hora < 0) {
+      hora = 23;  
+      dia -= 1;   
+    }
+  }
   
   snprintf(fechaActual, sizeof(fechaActual), "%02d/%02d/%04d", 
-           rtc.getDay(), rtc.getMonth() + 1, rtc.getYear());
+           dia, rtc.getMonth() + 1, year);
   snprintf(horaActual, sizeof(horaActual), "%02d:%02d:%02d", 
-           rtc.getHour(true), rtc.getMinute(), rtc.getSecond());
+           hora, rtc.getMinute(), rtc.getSecond());
+  
 }
 
 bool conectarWiFi() {
@@ -771,28 +768,14 @@ bool conectarWiFi() {
     miPantalla.displayWiFiConectado(ipAddress);
 
     sonidoBueno();
-    
+
+    seConectoWiFiAlgunaVez = true;
     configurarTiempo();
+  
+    actualizarFechaHoraDesdeRTC();
     
-  rtcSincronizado = true;
-  
-  // Buscar pasos acumulados sin fecha válida (01/01/1970)
-  int pasosNoSincronizados = 0;
-  int indiceFechaTemporal = -1;
-  
-  for (int i = 0; i < totalDiasPasos; i++) {
-    if (strcmp(historialPasos[i].fecha, "01/01/1970") == 0) {
-      pasosNoSincronizados = historialPasos[i].pasos;
-      indiceFechaTemporal = i;
-      Serial.print("Pasos sin fecha encontrados: ");
-      Serial.println(pasosNoSincronizados);
-      break;
-    }
-  }
-  
-  // Si hay pasos sin sincronizar, sumarlos a la fecha actual
-  if (pasosNoSincronizados > 0 && indiceFechaTemporal >= 0) {
-    // Buscar si ya existe entrada para fecha actual
+    cargarJSONdesdeSPIFFS();
+    
     int indiceFechaActual = -1;
     for (int i = 0; i < totalDiasPasos; i++) {
       if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
@@ -801,43 +784,39 @@ bool conectarWiFi() {
       }
     }
     
-    if (indiceFechaActual >= 0) {
-      // Ya existe la fecha actual, sumar los pasos
-      historialPasos[indiceFechaActual].pasos += pasosNoSincronizados;
-      pasos = historialPasos[indiceFechaActual].pasos;
-      Serial.print("Pasos sumados a fecha actual. Total: ");
-      Serial.println(pasos);
-    } else {
-      pasos = pasosNoSincronizados;
-      guardarPasos(fechaActual, pasos);
-      Serial.print("Nueva entrada creada para hoy: ");
-      Serial.println(pasos);
-    }
-    
-    for (int i = indiceFechaTemporal; i < totalDiasPasos - 1; i++) {
-      historialPasos[i] = historialPasos[i + 1];
-    }
-    totalDiasPasos--;
-    
-    contadorPasos.setStepCount(pasos);
-    
-    guardarJSONenSPIFFS();
-    Serial.println("Sincronización completada y guardada en SPIFFS");
-  }
-
-  else {
-    cargarJSONdesdeSPIFFS();
-    
-    for (int i = 0; i < totalDiasPasos; i++) {
-      if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
-        pasos = historialPasos[i].pasos;
+    if (pasos > 0) {
+      if (indiceFechaActual >= 0) {
+        int pasosRAM = pasos;
+        int pasosSPIFFS = historialPasos[indiceFechaActual].pasos;
+        historialPasos[indiceFechaActual].pasos += pasosRAM;
+        pasos = historialPasos[indiceFechaActual].pasos;
+        
+      } 
+      else {
+        if (totalDiasPasos >= MAX_HISTORIAL) {
+          for (int i = 1; i < MAX_HISTORIAL; i++) {
+            historialPasos[i - 1] = historialPasos[i];
+          }
+          totalDiasPasos = MAX_HISTORIAL - 1;
+        }
+        
+        strncpy(historialPasos[totalDiasPasos].fecha, fechaActual, 10);
+        historialPasos[totalDiasPasos].fecha[10] = '\0';
+        historialPasos[totalDiasPasos].pasos = pasos;
+        totalDiasPasos++;
+      }
+      
+      contadorPasos.setStepCount(pasos);
+    } 
+    else {
+      if (indiceFechaActual >= 0) {
+        pasos = historialPasos[indiceFechaActual].pasos;
         contadorPasos.setStepCount(pasos);
-        Serial.print("Pasos del día cargados: ");
-        Serial.println(pasos);
-        break;
       }
     }
-  }
+    
+    guardarJSONenSPIFFS();
+
 
     server.on("/", handleRoot);
     server.on("/datos", handleDatos);
@@ -859,8 +838,11 @@ void desconectarWiFi() {
 }
 
 void guardarJSONenSPIFFS() {
-  String jsonActual = generarDatosJSON();
+  if (!rtcSincronizado) {
+    return;
+  }
   
+  String jsonActual = generarDatosJSON();
   File file = SPIFFS.open("/datos.json", FILE_WRITE);
   if (file) {
     file.print(jsonActual);
@@ -954,6 +936,30 @@ void sonidoError() {
   noTone(BUZZER_PIN);
 }
 
+void modoDeepSleep() {
+    cancelarTodo();
+    
+    miPantalla.displayDeepSleep();
+    delay(2000);
+    sonidoBueno();
+    
+    Serial.println("Deep sleep por inactividad");
+    Serial.flush();
+    
+    if (internetConectado) {
+      desconectarWiFi();
+      internetConectado = false;
+    }
+    miPantalla.apagar();
+
+    contadorPasos.modoCycle();
+    
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
+    esp_sleep_enable_ext1_wakeup(BIT(25), ESP_EXT1_WAKEUP_ALL_LOW);
+
+    esp_deep_sleep_start();
+}
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
@@ -978,10 +984,24 @@ void setup() {
   contadorPasos.iniciar();
   miPantalla.iniciar();
 
-  // Inicializar fecha y hora una vez al inicio
-  inicializarFechaHora();
+  actualizarFechaHoraDesdeRTC();
+
+  if (rtcSincronizado) {
+    strncpy(fechaAnterior, fechaActual, 10);
+    fechaAnterior[10] = '\0';
+    for (int i = 0; i < totalDiasPasos; i++) {
+      if (strcmp(historialPasos[i].fecha, fechaActual) == 0) {
+        pasos = historialPasos[i].pasos;
+        contadorPasos.setStepCount(pasos);
+        Serial.print("Pasos recuperados: ");
+        Serial.println(pasos);
+        break;
+      }
+    }
+  } 
 
   sonidoBueno();
+  delay(500);
   miPantalla.displayBienvenidoSetup();
   delay(3000);
   miPantalla.apagar();
@@ -1002,6 +1022,7 @@ void loop() {
 
   if (ahora - ultimoGuardado >= INTERVALO_GUARDADO) {
     ultimoGuardado = ahora;
+    actualizarFechaHoraDesdeRTC();
     guardarJSONenSPIFFS();
   }
 
@@ -1013,6 +1034,19 @@ void loop() {
     if (pasos != pasosAnteriores) {  
         ultimaActividad = ahora;
         Serial.println("hay actividad");
+    }
+
+    if (rtcSincronizado && strlen(fechaActual) > 0 && strlen(fechaAnterior) > 0) {
+        if (strcmp(fechaActual, fechaAnterior) != 0) {
+            pasos = 0;
+            contadorPasos.setStepCount(0);
+            umbralSuperado = false;
+        }
+    }
+    
+    if (rtcSincronizado && strlen(fechaActual) > 0) {
+        strncpy(fechaAnterior, fechaActual, 10);
+        fechaAnterior[10] = '\0';
     }
 
     guardarPasos(fechaActual, pasos);
@@ -1098,28 +1132,10 @@ void loop() {
       tiempoInicioContador = ahora;
     }
 
-    // 10 CLICKS = DEEP SLEEP
-    if (contadorClicks >= 10) {
+    // 4 CLICKS = DEEP SLEEP
+    if (contadorClicks >= 4) {
       contadorClicks = 0;
-      cancelarTodo();
-      
-      miPantalla.displayDeepSleep();
-      delay(2000);
-      sonidoBueno();
-      
-      guardarJSONenSPIFFS();
-      Serial.println("Deep sleep (10 clicks)");
-      Serial.flush();
-      
-      miPantalla.apagar();
-      if (internetConectado) {
-        desconectarWiFi();
-      }
-
-      contadorPasos.apagar();
-      
-      esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
-      esp_deep_sleep_start();
+      modoDeepSleep();
     }
 
     if (enCuentaAtras || pantallaAutomaticaActiva) {
@@ -1134,7 +1150,7 @@ void loop() {
 
       actualizarFechaHoraDesdeRTC();
       miPantalla.setDatos(pasos, umbralPasos, fechaActual, horaActual, internetConectado, 38);
-      if (strcmp(fechaActual, "01/01/1970") == 0) {
+      if (!rtcSincronizado) {
         miPantalla.displayBienvenida();  
       } else {
         miPantalla.displayPredeterminado();
@@ -1164,7 +1180,7 @@ void loop() {
         ultimaActualizacionPantalla = ahora;
         actualizarFechaHoraDesdeRTC();
         miPantalla.setDatos(pasos, umbralPasos, fechaActual, horaActual, internetConectado, 38);
-        if (strcmp(fechaActual, "01/01/1970") != 0) {
+        if (rtcSincronizado) {
           miPantalla.displayPredeterminado(); 
         } 
       }
@@ -1192,7 +1208,7 @@ void loop() {
       temp = sensorTemp.medirPromedioBruto(); //sin temperatura
       // temp = 35;
 
-      guardarTemperatura(fechaActual, horaActual, temp);
+      actualizarFechaHoraDesdeRTC();
 
       pantallaTrabajando = true;
       sensorTemperaturaTrabajando = false;
@@ -1209,12 +1225,14 @@ void loop() {
         Serial.print(temp);
         Serial.println(" °C). Parece temperatura ambiental.");
       } 
-      else if (temp >= 38) {
+      else if (temp >= 37.5) {
         miPantalla.displayMedidaCorrecta(temp, "FIEBRE");
+        guardarTemperatura(fechaActual, horaActual, temp);
         sonidoMalo();  
       }
       else {
         miPantalla.displayMedidaCorrecta(temp, "OK");
+        guardarTemperatura(fechaActual, horaActual, temp);
         sonidoBueno();
 
         Serial.print("Temperatura corporal válida: ");
@@ -1259,36 +1277,7 @@ void loop() {
   }
 
   if (ahora - ultimaActividad > TIEMPO_INACTIVIDAD) {
-    cancelarTodo();
-    
-    miPantalla.displayLightSleep();
-    delay(2000);
-    sonidoBueno();
-    
-    Serial.println("Light sleep por inactividad");
-    Serial.flush();
-    
-    if (internetConectado) {
-      desconectarWiFi();
-      internetConectado = false;
-    }
-    miPantalla.apagar();
-
-    contadorPasos.modoCycle();
-    
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_26, 0);
-    esp_sleep_enable_ext1_wakeup(BIT(25), ESP_EXT1_WAKEUP_ALL_LOW);
-
-    esp_light_sleep_start();
-    
-    Serial.println("Despertado de light sleep");
-    sonidoBueno();
-    miPantalla.displayRecuperado();
-    delay(3000);
-    miPantalla.apagar();
-    contadorPasos.modoNormal();
-
-    ultimaActividad = millis();
+    modoDeepSleep();
   }
 
 }
